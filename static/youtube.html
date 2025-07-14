@@ -331,8 +331,8 @@
           const encodedUrl = encodeURIComponent(formatUrl);
           const encodedFilename = encodeURIComponent(filename);
 
-          // Create proxy URL
-          const proxyUrl = `http://localhost:8000/download-proxy?video_url=${encodedUrl}&filename=${encodedFilename}`;
+          // Create proxy URL - **تغيير هنا إلى رابط Render**
+          const proxyUrl = `https://snapload-qg2u.onrender.com/download-proxy?video_url=${encodedUrl}&filename=${encodedFilename}`;
 
           const downloadBtn = document.getElementById("downloadBtn");
           downloadBtn.href = proxyUrl;
@@ -369,7 +369,7 @@
         document.getElementById("videoInfo").style.display = "none";
 
         try {
-          const response = await fetch("http://localhost:8000/extract-video", {
+          const response = await fetch("https://snapload-qg2u.onrender.com/extract-video", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
