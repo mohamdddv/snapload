@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YouTube Video Downloader</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="background-animation">
+      <div class="floating-shapes">
+        <div class="shape shape-1"></div>
+        <div class="shape shape-2"></div>
+        <div class="shape shape-3"></div>
+        <div class="shape shape-4"></div>
+        <div class="shape shape-5"></div>
+      </div>
+    </div>
+
+    <div class="container">
+      <div class="header">
+        <h1>
+          <span class="icon">🎬</span>
+          YouTube Downloader
+          <span class="subtitle">Download videos in any quality</span>
+        </h1>
+      </div>
+
+      <div class="input-section">
+        <div class="input-group">
+          <div class="input-wrapper">
+            <input
+              type="text"
+              id="videoUrl"
+              placeholder="Paste YouTube link here..."
+            />
+            <div class="input-icon">🔗</div>
+          </div>
+          <button class="analyze-btn" onclick="analyzeVideo()">
+            <span class="btn-text">Analyze Video</span>
+            <span class="btn-icon">🔍</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <p>Analyzing video...</p>
+      </div>
+
+      <div class="error-message" id="errorMessage"></div>
+
+      <div class="video-info" id="videoInfo">
+        <div class="video-header">
+          <h2 class="video-title" id="videoTitle"></h2>
+          <div class="video-badge">✨ Ready to Download</div>
+        </div>
+
+        <div class="video-details">
+          <div class="detail-item">
+            <div class="detail-icon">⏱️</div>
+            <div class="detail-content">
+              <div class="detail-label">Duration</div>
+              <div class="detail-value" id="videoDuration"></div>
+            </div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-icon">👤</div>
+            <div class="detail-content">
+              <div class="detail-label">Uploader</div>
+              <div class="detail-value" id="videoUploader"></div>
+            </div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-icon">👀</div>
+            <div class="detail-content">
+              <div class="detail-label">Views</div>
+              <div class="detail-value" id="videoViews"></div>
+            </div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-icon">📅</div>
+            <div class="detail-content">
+              <div class="detail-label">Upload Date</div>
+              <div class="detail-value" id="videoDate"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="quality-selection">
+          <div class="quality-header">
+            <div class="quality-label">🎯 Select Quality</div>
+            <div class="quality-count">
+              <span id="qualityCount">0</span> options available
+            </div>
+          </div>
+          <div class="quality-options" id="qualityOptions">
+            <!-- Quality options will be populated dynamically -->
+          </div>
+        </div>
+
+        <div class="download-section">
+          <a
+            class="download-btn"
+            id="downloadBtn"
+            href="#"
+            download
+            onclick="handleDownload(event)"
+          >
+            <span class="download-icon">⬇️</span>
+            <span class="download-text">Download Video</span>
+            <div class="download-ripple"></div>
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Download Modal -->
+    <div class="download-modal" id="downloadModal">
+      <div class="download-modal-content">
+        <div class="download-modal-icon">✅</div>
+        <div class="download-modal-title">Download Started!</div>
+        <div class="download-modal-message" id="downloadModalMessage">
+          Your video download has started successfully.
+        </div>
+        <div class="download-modal-quality" id="downloadModalQuality"></div>
+        <button class="download-modal-btn" onclick="closeDownloadModal()">
+          OK
+        </button>
+      </div>
+    </div>
+
+    <script>
+      let videoData = null;
+      let selectedQuality = null;
+      let qualityOptions = [];
+
+      // Show download modal
+      function showDownloadModal(title, quality) {
+        const modal = document.getElementById("downloadModal");
+        const messageEl = document.getElementById("downloadModalMessage");
+        const qualityEl = document.getElementById("downloadModalQuality");
+
+        messageEl.textContent = `Downloading: ${title}`;
+        qualityEl.textContent = `Quality: ${quality}`;
+
+        modal.style.display = "flex";
+        setTimeout(() => {
+          modal.classList.add("show");
+        }, 10);
+      }
+
+      // Close download modal and reset form
+      function closeDownloadModal() {
+        const modal = document.getElementById("downloadModal");
+
+        modal.classList.remove("show");
+        setTimeout(() => {
+          modal.style.display = "none";
+          resetForm();
+        }, 300);
+      }
+
+      // Reset form function
+      function resetForm() {
+        // Clear input
+        document.getElementById("videoUrl").value = "";
+
+        // Hide video info
+        document.getElementById("videoInfo").style.display = "none";
+
+        // Reset variables
+        videoData = null;
+        selectedQuality = null;
+        qualityOptions = [];
+
+        // Focus on input
+        document.getElementById("videoUrl").focus();
+
+        // Clear any error messages
+        document.getElementById("errorMessage").style.display = "none";
+      }
+
+      // Handle download click
+      function handleDownload(event) {
+        if (!selectedQuality || !videoData) {
+          event.preventDefault();
+          showError("Please select a quality option first");
+          return;
+        }
+
+        const title = videoData.title || "video";
+        const quality = selectedQuality.quality;
+
+        // Show download modal
+        showDownloadModal(title, quality);
+
+        // Let the normal download proceed
+        return true;
+      }
+
+      // Quality selection event listeners
+      document
+        .getElementById("qualityOptions")
+        .addEventListener("click", function (e) {
+          const qualityOption = e.target.closest(".quality-option");
+          if (qualityOption) {
+            // Remove selected class from all options
+            document.querySelectorAll(".quality-option").forEach((option) => {
+              option.classList.remove("selected");
+            });
+
+            // Add selected class to clicked option
+            qualityOption.classList.add("selected");
+
+            // Update selected quality
+            const qualityIndex = parseInt(
+              qualityOption.getAttribute("data-quality-index")
+            );
+            selectedQuality = qualityOptions[qualityIndex];
+
+            // Update download link
+            if (selectedQuality) {
+              updateDownloadLink();
+            }
+          }
+        });
+
+      function showError(message) {
+        const errorDiv = document.getElementById("errorMessage");
+        errorDiv.textContent = message;
+        errorDiv.style.display = "block";
+        setTimeout(() => {
+          errorDiv.style.display = "none";
+        }, 5000);
+      }
+
+      function showLoading(show) {
+        document.getElementById("loading").style.display = show
+          ? "block"
+          : "none";
+        document.querySelector(".analyze-btn").disabled = show;
+      }
+
+      function formatNumber(num) {
+        if (num >= 1000000000) {
+          return (num / 1000000000).toFixed(1) + "B";
+        } else if (num >= 1000000) {
+          return (num / 1000000).toFixed(1) + "M";
+        } else if (num >= 1000) {
+          return (num / 1000).toFixed(1) + "K";
+        }
+        return num?.toString() || "0";
+      }
+
+      function getQualityIcon(quality) {
+        const q = quality.toLowerCase();
+        if (q.includes("audio")) return "🎵";
+        if (q.includes("2160p") || q.includes("4k")) return "🎬";
+        if (q.includes("1440p")) return "🎯";
+        if (q.includes("1080p")) return "📺";
+        if (q.includes("720p")) return "📱";
+        if (q.includes("480p")) return "💾";
+        if (q.includes("360p")) return "📹";
+        return "🎥";
+      }
+
+      function populateQualityOptions(qualities) {
+        const qualityContainer = document.getElementById("qualityOptions");
+        qualityContainer.innerHTML = "";
+
+        qualityOptions = qualities;
+        document.getElementById("qualityCount").textContent = qualities.length;
+
+        qualities.forEach((quality, index) => {
+          const qualityDiv = document.createElement("div");
+          qualityDiv.className = "quality-option";
+          qualityDiv.setAttribute("data-quality-index", index);
+
+          if (index === 0) {
+            qualityDiv.classList.add("selected");
+            selectedQuality = quality;
+          }
+
+          const icon = getQualityIcon(quality.quality);
+          qualityDiv.innerHTML = `
+            <div class="quality-icon">${icon}</div>
+            <div class="quality-info">
+              <div class="quality-text">${quality.quality}</div>
+              ${
+                quality.ext
+                  ? `<div class="quality-badge">${quality.ext.toUpperCase()}</div>`
+                  : ""
+              }
+            </div>
+            <div class="quality-check">✓</div>
+          `;
+
+          qualityContainer.appendChild(qualityDiv);
+        });
+      }
+
+      async function updateDownloadLink() {
+        if (!selectedQuality || !videoData) return;
+
+        try {
+          // Create download URL using the selected quality's URL
+          const title = videoData.title || "video";
+          const ext = selectedQuality.ext || "mp4";
+          const formatUrl = selectedQuality.url;
+
+          // Clean title for filename - more robust cleaning
+          const safeTitle = title
+            .replace(/[<>:"/\\|?*]/g, "") // Remove invalid filename characters
+            .replace(/\s+/g, "_") // Replace spaces with underscores
+            .substring(0, 100) // Limit length
+            .trim();
+
+          const filename = `${safeTitle}.${ext}`;
+
+          // Log for debugging
+          console.log("Creating download link:", {
+            title: title,
+            safeTitle: safeTitle,
+            filename: filename,
+            quality: selectedQuality.quality,
+            ext: ext,
+          });
+
+          // Encode URLs
+          const encodedUrl = encodeURIComponent(formatUrl);
+          const encodedFilename = encodeURIComponent(filename);
+
+          // Create proxy URL
+          const proxyUrl = `http://localhost:8000/download-proxy?video_url=${encodedUrl}&filename=${encodedFilename}`;
+
+          const downloadBtn = document.getElementById("downloadBtn");
+          downloadBtn.href = proxyUrl;
+          downloadBtn.download = filename;
+
+          // Update button text with quality info
+          const icon = getQualityIcon(selectedQuality.quality);
+          downloadBtn.querySelector(
+            ".download-text"
+          ).innerHTML = `Download ${icon} ${selectedQuality.quality}`;
+
+          // Also update the download button title attribute for better UX
+          downloadBtn.title = `Download: ${title} (${selectedQuality.quality})`;
+        } catch (error) {
+          console.error("Error updating download link:", error);
+          showError("Error preparing download link");
+        }
+      }
+
+      async function analyzeVideo() {
+        const url = document.getElementById("videoUrl").value.trim();
+
+        if (!url) {
+          showError("Please enter a YouTube link.");
+          return;
+        }
+
+        if (!url.includes("youtube.com") && !url.includes("youtu.be")) {
+          showError("Please enter a valid YouTube link.");
+          return;
+        }
+
+        showLoading(true);
+        document.getElementById("videoInfo").style.display = "none";
+
+        try {
+          const response = await fetch("http://localhost:8000/extract-video", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ url: url }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || "Failed to analyze video");
+          }
+
+          videoData = await response.json();
+          console.log("Video Data:", videoData);
+
+          // Update UI with video information
+          document.getElementById("videoTitle").textContent =
+            videoData.title || "Unknown Title";
+          document.getElementById("videoDuration").textContent =
+            videoData.duration || "Unknown";
+          document.getElementById("videoUploader").textContent =
+            videoData.uploader || "Unknown";
+          document.getElementById("videoViews").textContent =
+            videoData.view_count
+              ? formatNumber(videoData.view_count)
+              : "Unknown";
+          document.getElementById("videoDate").textContent =
+            videoData.upload_date || "Unknown";
+
+          // Log video data for debugging
+          console.log("Video data received:", {
+            title: videoData.title,
+            duration: videoData.duration,
+            uploader: videoData.uploader,
+            view_count: videoData.view_count,
+            upload_date: videoData.upload_date,
+            quality_options: videoData.quality_options?.length || 0,
+          });
+
+          // Populate quality options
+          if (
+            videoData.quality_options &&
+            videoData.quality_options.length > 0
+          ) {
+            populateQualityOptions(videoData.quality_options);
+            updateDownloadLink();
+          } else {
+            showError("No quality options available for this video");
+            return;
+          }
+
+          // Show video info
+          document.getElementById("videoInfo").style.display = "block";
+        } catch (error) {
+          console.error("Error:", error);
+          showError(`Error: ${error.message}`);
+        } finally {
+          showLoading(false);
+        }
+      }
+
+      // Allow Enter key to trigger analysis
+      document
+        .getElementById("videoUrl")
+        .addEventListener("keypress", function (e) {
+          if (e.key === "Enter") {
+            analyzeVideo();
+          }
+        });
+
+      // Auto-focus on URL input
+      document.getElementById("videoUrl").focus();
+    </script>
+  </body>
+</html>
