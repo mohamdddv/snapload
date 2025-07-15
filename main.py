@@ -19,7 +19,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# إعداد اللوقينج
+# إعداد اللوقينج (التسجيل)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -63,81 +63,20 @@ def get_quality_label(fmt):
     fps = fmt.get('fps')
     ext = fmt.get('ext', 'mp4')
     filesize = fmt.get('filesize') or fmt.get('filesize_approx')
-    
+
     if not height:
         if fmt.get('acodec') and fmt.get('acodec') != 'none':
             abr = fmt.get('abr', 128)
             return f"Audio Only ({abr}kbps {ext.upper()})"
         return f"Unknown Quality ({ext.upper()})"
-    
+
     quality_str = f"{height}p"
     if fps and fps > 30:
         quality_str += f"{fps}"
-    
     if filesize:
         size_str = format_filesize(filesize)
         return f"{quality_str} ({ext.upper()}) - {size_str}"
-    
     return f"{quality_str} ({ext.upper()})"
-
-@app.get("/download-proxy")
-async def download_video_proxy(video_url: str, filename: str):
-    try:
-        logger.info(f"Proxy download requested for: {video_url[:100]}...")
-        logger.info(f"Filename: {filename}")
-
-        decoded_video_url = urllib.parse.unquote(video_url)
-        decoded_filename = urllib.parse.unquote(filename)
-
-        headers = {
-            'User-Agent': 'Mozilla/5.0',
-            'Accept': '*/*',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'identity',
-            'Range': 'bytes=0-'
-        }
-
-        response = requests.get(decoded_video_url, stream=True, headers=headers)
-
-        if response.status_code not in [200, 206]:
-            logger.error(f"Failed to fetch video: {response.status_code}")
-            raise HTTPException(status_code=400, detail=f"Failed to fetch video: {response.status_code}")
-
-        content_type = response.headers.get('content-type', 'video/mp4')
-        content_length = response.headers.get('content-length')
-
-        def generate():
-            try:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        yield chunk
-            except Exception as e:
-                logger.error(f"Error streaming content: {e}")
-                raise
-
-        safe_filename = urllib.parse.quote(decoded_filename)
-        content_disposition = f"attachment; filename*=UTF-8''{safe_filename}"
-
-        response_headers = {
-            'Content-Disposition': content_disposition,
-            'Content-Type': content_type,
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Expose-Headers': 'Content-Disposition',
-            'Cache-Control': 'no-cache'
-        }
-
-        if content_length:
-            response_headers['Content-Length'] = content_length
-
-        return StreamingResponse(
-            generate(),
-            media_type=content_type,
-            headers=response_headers
-        )
-
-    except Exception as e:
-        logger.error(f"Error in proxy download: {str(e)}")
-        raise HTTPException(status_code=400, detail=f"Download failed: {str(e)}")
 
 @app.post("/extract-video", response_model=VideoInfo)
 async def extract_video_info(youtube_url: YouTubeURL):
@@ -147,20 +86,23 @@ async def extract_video_info(youtube_url: YouTubeURL):
             'no_warnings': True,
             'extractaudio': False,
             'listformats': True,
-            'cookiefile': 'cookies.txt'  # ✅ هذا السطر هو المفتاح لتجاوز رسالة الروبوت
+            'cookiefile': 'cookies.txt',  # تأكد أن هذا الملف موجود وبتنسيق Netscape
+            'extractor_args': {
+                'youtubetab': {'skip': 'authcheck'}
+            }
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(youtube_url.url, download=False)
             formats = info.get('formats', [])
+            
             quality_options = []
             seen_qualities = set()
-
             sorted_formats = sorted(formats, key=lambda x: (
                 x.get('height', 0) or 0,
                 x.get('filesize', 0) or x.get('filesize_approx', 0) or 0
             ), reverse=True)
-
+            
             for fmt in sorted_formats:
                 if not fmt.get('url') or not fmt.get('url', '').startswith('http'):
                     continue
@@ -170,11 +112,11 @@ async def extract_video_info(youtube_url: YouTubeURL):
                     continue
                 if (fmt.get('vcodec') == 'none' and fmt.get('acodec') == 'none'):
                     continue
-
+                
                 height = fmt.get('height', 0)
                 ext = fmt.get('ext', 'mp4')
                 fps = fmt.get('fps', 30)
-
+                
                 if height:
                     quality_id = f"{height}p_{ext}"
                     if fps and fps > 30:
@@ -182,11 +124,12 @@ async def extract_video_info(youtube_url: YouTubeURL):
                 else:
                     abr = fmt.get('abr', 128)
                     quality_id = f"audio_{abr}kbps_{ext}"
-
+                
                 if quality_id in seen_qualities:
                     continue
+                
                 seen_qualities.add(quality_id)
-
+                
                 quality_option = QualityOption(
                     quality=get_quality_label(fmt),
                     format_id=fmt.get('format_id', ''),
@@ -200,20 +143,25 @@ async def extract_video_info(youtube_url: YouTubeURL):
                     acodec=fmt.get('acodec'),
                     url=fmt['url']
                 )
+                
                 quality_options.append(quality_option)
-
+                
                 if len(quality_options) >= 15:
                     break
-
+            
             if not quality_options:
                 raise HTTPException(status_code=400, detail="No compatible video formats found")
-
+            
             duration = info.get('duration', 0)
             duration_str = f"{duration // 60}:{duration % 60:02d}" if duration else "Unknown"
-
             upload_date = info.get('upload_date')
-            formatted_date = f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:8]}" if upload_date else None
-
+            formatted_date = None
+            if upload_date:
+                try:
+                    formatted_date = f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:8]}"
+                except:
+                    formatted_date = upload_date
+            
             return VideoInfo(
                 title=info.get('title', 'Unknown Title'),
                 duration=duration_str,
@@ -229,26 +177,9 @@ async def extract_video_info(youtube_url: YouTubeURL):
         logger.error(f"Error extracting video: {str(e)}")
         raise HTTPException(status_code=400, detail=f"Error extracting video: {str(e)}")
 
-@app.get("/download-format")
-async def download_format(format_url: str, title: str, ext: str = "mp4"):
-    try:
-        safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        filename = f"{safe_title}.{ext}"
-        encoded_url = urllib.parse.quote(format_url, safe='')
-        encoded_filename = urllib.parse.quote(filename, safe='')
-        proxy_url = f"http://localhost:8000/download-proxy?video_url={encoded_url}&filename={encoded_filename}"
-        return {"download_url": proxy_url, "filename": filename}
-    except Exception as e:
-        logger.error(f"Error creating download link: {str(e)}")
-        raise HTTPException(status_code=400, detail=f"Error creating download link: {str(e)}")
-
 @app.get("/")
 async def root():
     return {"message": "YouTube Video Downloader API is running"}
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
 
 if __name__ == "__main__":
     import uvicorn
